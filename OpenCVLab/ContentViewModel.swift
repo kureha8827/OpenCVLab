@@ -56,53 +56,14 @@ class ContentViewModel: ObservableObject {
             let uiImage = input.trimming(area: roi)
             let srcMat = Mat(uiImage: uiImage)
             let dstMat = Mat()
-            let (mapX, mapY) = await meshgrid((max_r*2).f, (max_r*2).f)
-
+            // 画像の画素数に等しいフラットな配列
+            var flatMapX: [Float] = Array(repeating: -1, count: Int(roi.width*roi.height))
+            var flatMapY: [Float] = Array(repeating: -1, count: Int(roi.width*roi.height))
+//
             let start = Date()
             print("eyeEnlarge-start")
-
-//            for i in 0..<Int(roi.width) {
-//                for j in 0..<Int(roi.height) {
-//                    if maxEllipse(SIMD2<Float>(Float(i), Float(j))) {
-//                        let cur = self.currentPosition((i.f, j.f), (max_r.f, max_r.f, r))
-//                        let delta = self.makeEnlargeDelta(cur, scale, maxScale)
-//                        mapX.at(row: Int32(j), col: Int32(i)).v = max_r.f + (i.f - max_r.f) * delta
-//                        mapY.at(row: Int32(j), col: Int32(i)).v = max_r.f + (j.f - max_r.f) * delta
-//                    }
-//                }
-//            }
         
-            // TODO: スライダを作成してリアルタイムに変化量を与えカクつきがないかチェックする
-//            await withTaskGroup(of: Void.self) { group in
-//                for i in 0..<Int(roi.width) {
-//                    group.addTask {
-//                    for j in 0..<Int(roi.height) {
-//                            if maxEllipse(SIMD2<Float>(Float(i)-max_r, Float(j)-max_r)) {
-//                                let cur = await self.currentPosition((i.f, j.f), (max_r.f, max_r.f, r))
-//                                let delta = await self.makeEnlargeDelta(cur, scale, maxScale)
-//                                mapX.at(row: Int32(j), col: Int32(i)).v = max_r.f + (i.f - max_r.f) * delta
-//                                mapY.at(row: Int32(j), col: Int32(i)).v = max_r.f + (j.f - max_r.f) * delta
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-            
-//            DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
-//                let i = n / Int(roi.width)
-//                let j = n % Int(roi.width)
-//                let i_r = Float(i) - max_r
-//                let j_r = Float(j) - max_r
-//                if maxEllipse(SIMD2<Float>(i_r, j_r)) {
-//                    let cur = self.currentPosition((i.f, j.f), (max_r.f, max_r.f, r))
-//                    let delta = self.makeEnlargeDelta(cur, scale, maxScale)
-//                    mapX.at(row: Int32(j), col: Int32(i)).v = max_r + i_r * Float(delta)
-//                    mapY.at(row: Int32(j), col: Int32(i)).v = max_r + j_r * Float(delta)
-//                }
-//            }
-            
-            // roi: CGRect
-            // 0からInt(roi.width*roi.height)までのfor文のようなもの
+//             0からInt(roi.width*roi.height)までのfor文のようなもの
             DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
                 let i = n / Int(roi.width)
                 let j = n % Int(roi.width)
@@ -110,15 +71,20 @@ class ContentViewModel: ObservableObject {
                 let j_r = Float(j) - max_r
                 if maxEllipse(SIMD2<Float>(i_r, j_r)) {
                     // 画素に代入する値
-                    let cur = self.currentPosition((CGFloat(i), (CGFloat(j)), (CGFloat(max_r), CGFloat(max_r), r)))
+                    let cur = self.currentPosition((CGFloat(i), CGFloat(j)), (CGFloat(max_r), CGFloat(max_r), r))
                     let delta = self.makeEnlargeDelta(cur, scale, maxScale)
                     
                     // 問題のコード
-                    mapX.at(row: Int32(j), col: Int32(i)).v = max_r + i_r * Float(delta)
-                    mapY.at(row: Int32(j), col: Int32(i)).v = max_r + j_r * Float(delta)
+                    flatMapX[n] = max_r + i_r * Float(delta)
+                    flatMapY[n] = max_r + j_r * Float(delta)
+                    
                 }
             }
-                    
+            let dataX = flatMapX.withUnsafeBytes { Data($0) }
+            let dataY = flatMapY.withUnsafeBytes { Data($0) }
+            let mapX = Mat(rows: Int32(height), cols: Int32(width), type: CvType.CV_32FC1, data: dataX)
+            let mapY = Mat(rows: Int32(height), cols: Int32(width), type: CvType.CV_32FC1, data: dataY)
+            
             print("eyeEnlarge-checkpoint1: ", String(format: "%.5f", -start.timeIntervalSinceNow))
             cv2.remap(src: srcMat, dst: dstMat, map1: mapX, map2: mapY, interpolation: 2)   // 0.03
             output = dstMat.toUIImage()
@@ -220,35 +186,35 @@ class ContentViewModel: ObservableObject {
     }
 
     
-    func meshgrid(_ width: CGFloat, _ height: CGFloat) async -> (Mat, Mat) {
-        let w = Int(width)
-        let h = Int(height)
-        
-        let xValues = Array(0..<w)
-        async let flatX: [Float] = Task {
-            var result: [Float] = []
-            for _ in 0..<h {
-                result += xValues.map { Float($0) } // xValuesをフラット化
-            }
-            return result
-        }.value
-            
-        async let flatY: [Float] = Task {
-            var result: [Float] = []
-            for i in 0..<h {
-                result += Array(repeating: i, count: w).map { Float($0) } // iをフラット化
-            }
-            return result
-        }.value
-        
-        let dataX = await flatX.withUnsafeBytes { Data($0) }
-        let dataY = await flatY.withUnsafeBytes { Data($0) }
-        
-        let mapX = Mat(rows: Int32(height), cols: Int32(width), type: CvType.CV_32FC1, data: dataX)
-        let mapY = Mat(rows: Int32(height), cols: Int32(width), type: CvType.CV_32FC1, data: dataY)
-        
-        return (mapX, mapY)
-    }
+//    func meshgrid(_ width: CGFloat, _ height: CGFloat) async -> (Mat, Mat) {
+//        let w = Int(width)
+//        let h = Int(height)
+//        
+//        let xValues = Array(0..<w)
+//        async let flatX: [Float] = Task {
+//            var result: [Float] = []
+//            for _ in 0..<h {
+//                result += xValues.map { Float($0) } // xValuesをフラット化
+//            }
+//            return result
+//        }.value
+//            
+//        async let flatY: [Float] = Task {
+//            var result: [Float] = []
+//            for i in 0..<h {
+//                result += Array(repeating: i, count: w).map { Float($0) } // iをフラット化
+//            }
+//            return result
+//        }.value
+//        
+//        let dataX = await flatX.withUnsafeBytes { Data($0) }
+//        let dataY = await flatY.withUnsafeBytes { Data($0) }
+//        
+//        let mapX = Mat(rows: Int32(height), cols: Int32(width), type: CvType.CV_32FC1, data: dataX)
+//        let mapY = Mat(rows: Int32(height), cols: Int32(width), type: CvType.CV_32FC1, data: dataY)
+//        
+//        return (mapX, mapY)
+//    }
     
     
     private func makeEllipseParameter(_ points: [CGPoint]) -> CGFloat {
