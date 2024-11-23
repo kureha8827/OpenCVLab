@@ -62,30 +62,36 @@ class ContentViewModel: ObservableObject {
             if flatMapX.count == 0 || flatMapY.count == 0 {
                 flatMapX = Array(repeating: -1, count: Int(roi.width*roi.height))
                 flatMapY = Array(repeating: -1, count: Int(roi.width*roi.height))
+//                flatMapX = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
+//                flatMapY = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
             }
-//
+//            flatMapX = []
+//            flatMapY = []
             let start = Date()
             print("eyeEnlarge-start")
         
 //             0からInt(roi.width*roi.height)までのfor文のようなもの
-            for n in 0..<Int(roi.width*roi.height) {
-//            DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
-                let i = n / Int(roi.width)
-                let j = n % Int(roi.width)
-                let i_r = Float(i) - max_r
-                let j_r = Float(j) - max_r
-                if maxEllipse(SIMD2<Float>(i_r, j_r)) {
-                    // 画素に代入する値
-                    let cur = self.currentPosition((CGFloat(i), CGFloat(j)), (CGFloat(max_r), CGFloat(max_r), r))
-                    let delta = self.makeEnlargeDelta(cur, scale, maxScale)
-                    // 問題のコード
-                    flatMapX[n] = max_r + i_r * Float(delta)
-                    flatMapY[n] = max_r + j_r * Float(delta)
-                } else {
-                    flatMapX[n] = Float(i)
-                    flatMapY[n] = Float(j)
+            flatMapX.withUnsafeMutableBufferPointer { bufferX in
+                flatMapY.withUnsafeMutableBufferPointer { bufferY in
+                    for n in 0..<Int(roi.width*roi.height) {
+                        //            DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
+                        let i = n / Int(roi.width)
+                        let j = n % Int(roi.width)
+                        let i_r = Float(i) - max_r
+                        let j_r = Float(j) - max_r
+                        if maxEllipse(SIMD2<Float>(i_r, j_r)) {
+                            // 画素に代入する値
+                            let cur = self.currentPosition((CGFloat(i), CGFloat(j)), (CGFloat(max_r), CGFloat(max_r), r))
+                            let delta = self.makeEnlargeDelta(cur, scale, maxScale)
+                            // 問題のコード
+                            bufferX[n] = max_r + i_r * Float(delta)
+                            bufferY[n] = max_r + j_r * Float(delta)
+                        } else {
+                            bufferX[n] = Float(i)
+                            bufferY[n] = Float(j)
+                        }
+                    }
                 }
-                
             }
             let dataX = flatMapX.withUnsafeBytes { Data($0) }
             let dataY = flatMapY.withUnsafeBytes { Data($0) }
