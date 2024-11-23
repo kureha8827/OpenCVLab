@@ -62,8 +62,8 @@ class ContentViewModel: ObservableObject {
             if flatMapX.count == 0 || flatMapY.count == 0 {
                 flatMapX = Array(repeating: -1, count: Int(roi.width*roi.height))
                 flatMapY = Array(repeating: -1, count: Int(roi.width*roi.height))
-//                flatMapX = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
-//                flatMapY = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
+////                flatMapX = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
+////                flatMapY = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
             }
 //            flatMapX = []
 //            flatMapY = []
@@ -71,30 +71,37 @@ class ContentViewModel: ObservableObject {
             print("eyeEnlarge-start")
         
 //             0からInt(roi.width*roi.height)までのfor文のようなもの
-            flatMapX.withUnsafeMutableBufferPointer { bufferX in
-                flatMapY.withUnsafeMutableBufferPointer { bufferY in
-                    for n in 0..<Int(roi.width*roi.height) {
-                        //            DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
-                        let i = n / Int(roi.width)
-                        let j = n % Int(roi.width)
-                        let i_r = Float(i) - max_r
-                        let j_r = Float(j) - max_r
-                        if maxEllipse(SIMD2<Float>(i_r, j_r)) {
-                            // 画素に代入する値
-                            let cur = self.currentPosition((CGFloat(i), CGFloat(j)), (CGFloat(max_r), CGFloat(max_r), r))
-                            let delta = self.makeEnlargeDelta(cur, scale, maxScale)
-                            // 問題のコード
-                            bufferX[n] = max_r + i_r * Float(delta)
-                            bufferY[n] = max_r + j_r * Float(delta)
-                        } else {
-                            bufferX[n] = Float(i)
-                            bufferY[n] = Float(j)
-                        }
-                    }
+            var dataX: Data
+            var dataY: Data
+            let mapXPtr = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
+            let mapYPtr = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
+            defer {
+                mapXPtr.deallocate()
+                mapYPtr.deallocate()
+            }
+            for n in 0..<Int(roi.width*roi.height) {
+                //            DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
+                let i = n / Int(roi.width)
+                let j = n % Int(roi.width)
+                let i_r = Float(i) - max_r
+                let j_r = Float(j) - max_r
+                if maxEllipse(SIMD2<Float>(i_r, j_r)) {
+                    // 画素に代入する値
+                    let cur = self.currentPosition((CGFloat(i), CGFloat(j)), (CGFloat(max_r), CGFloat(max_r), r))
+                    let delta = self.makeEnlargeDelta(cur, scale, maxScale)
+                    // 問題のコード
+                    mapXPtr[n] = max_r + i_r * Float(delta)
+                    mapYPtr[n] = max_r + j_r * Float(delta)
+                } else {
+                    mapXPtr[n] = Float(i)
+                    mapYPtr[n] = Float(j)
                 }
             }
-            let dataX = flatMapX.withUnsafeBytes { Data($0) }
-            let dataY = flatMapY.withUnsafeBytes { Data($0) }
+            // 4はFloatのデータ長
+            dataX = Data(bytes: UnsafeRawPointer(mapXPtr), count: Int(roi.width*roi.height)*4)
+            dataY = Data(bytes: UnsafeRawPointer(mapYPtr), count: Int(roi.width*roi.height)*4)
+//            let dataX = flatMapX.withUnsafeBytes { Data($0) }
+//            let dataY = flatMapY.withUnsafeBytes { Data($0) }
             let mapX = Mat(rows: Int32(roi.height), cols: Int32(roi.width), type: CvType.CV_32FC1, data: dataX)
             let mapY = Mat(rows: Int32(roi.height), cols: Int32(roi.width), type: CvType.CV_32FC1, data: dataY)
             
