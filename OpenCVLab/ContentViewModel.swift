@@ -23,6 +23,8 @@ class ContentViewModel: ObservableObject {
     @Published var imageToggle = true
     var detectedLandmarks: [VNFaceObservation] = []
     var leftEyeLandmarks: [CGPoint] = []
+    private var flatMapX: [Float] = []
+    private var flatMapY: [Float] = []
     
     // 以下, 一時描画用の変数
     @Published var tmp_p: CGFloat = 0
@@ -57,14 +59,17 @@ class ContentViewModel: ObservableObject {
             let srcMat = Mat(uiImage: uiImage)
             let dstMat = Mat()
             // 画像の画素数に等しいフラットな配列
-            var flatMapX: [Float] = Array(repeating: -1, count: Int(roi.width*roi.height))
-            var flatMapY: [Float] = Array(repeating: -1, count: Int(roi.width*roi.height))
+            if flatMapX.count == 0 || flatMapY.count == 0 {
+                flatMapX = Array(repeating: -1, count: Int(roi.width*roi.height))
+                flatMapY = Array(repeating: -1, count: Int(roi.width*roi.height))
+            }
 //
             let start = Date()
             print("eyeEnlarge-start")
         
 //             0からInt(roi.width*roi.height)までのfor文のようなもの
-            DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
+            for n in 0..<Int(roi.width*roi.height) {
+//            DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
                 let i = n / Int(roi.width)
                 let j = n % Int(roi.width)
                 let i_r = Float(i) - max_r
@@ -73,17 +78,19 @@ class ContentViewModel: ObservableObject {
                     // 画素に代入する値
                     let cur = self.currentPosition((CGFloat(i), CGFloat(j)), (CGFloat(max_r), CGFloat(max_r), r))
                     let delta = self.makeEnlargeDelta(cur, scale, maxScale)
-                    
                     // 問題のコード
                     flatMapX[n] = max_r + i_r * Float(delta)
                     flatMapY[n] = max_r + j_r * Float(delta)
-                    
+                } else {
+                    flatMapX[n] = Float(i)
+                    flatMapY[n] = Float(j)
                 }
+                
             }
             let dataX = flatMapX.withUnsafeBytes { Data($0) }
             let dataY = flatMapY.withUnsafeBytes { Data($0) }
-            let mapX = Mat(rows: Int32(height), cols: Int32(width), type: CvType.CV_32FC1, data: dataX)
-            let mapY = Mat(rows: Int32(height), cols: Int32(width), type: CvType.CV_32FC1, data: dataY)
+            let mapX = Mat(rows: Int32(roi.height), cols: Int32(roi.width), type: CvType.CV_32FC1, data: dataX)
+            let mapY = Mat(rows: Int32(roi.height), cols: Int32(roi.width), type: CvType.CV_32FC1, data: dataY)
             
             print("eyeEnlarge-checkpoint1: ", String(format: "%.5f", -start.timeIntervalSinceNow))
             cv2.remap(src: srcMat, dst: dstMat, map1: mapX, map2: mapY, interpolation: 2)   // 0.03
