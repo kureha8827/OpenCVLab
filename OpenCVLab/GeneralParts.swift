@@ -27,23 +27,3 @@ func CGSize2Size2f(_ size: CGSize) -> Size2f {
 func size2f2CGSize(_ size: Size2f) -> CGSize {
     return CGSize(width: CGFloat(size.width), height: CGFloat(size.height))
 }
-
-extension Int {
-    public var f: CGFloat {
-        return CGFloat(self)
-    }
-}
-
-
-extension Float {
-    public var f: CGFloat {
-        return CGFloat(self)
-    }
-}
-
-
-extension Double {
-    public var f: CGFloat {
-        return CGFloat(self)
-    }
-}

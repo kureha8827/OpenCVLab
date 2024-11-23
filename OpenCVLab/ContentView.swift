@@ -42,6 +42,10 @@ struct ContentView: View {
 //                    }
                 }
                 .frame(width: 250, height: model.height * 250 / model.width)
+                .onDisappear {
+                    model.mapXPtr?.deallocate()
+                    model.mapYPtr?.deallocate()
+                }
                 Text("Output")
                 
             } else {

@@ -23,3 +23,23 @@ extension UIImage {
         return trimImage
     }
 }
+
+extension Int {
+    public var f: CGFloat {
+        return CGFloat(self)
+    }
+}
+
+
+extension Float {
+    public var f: CGFloat {
+        return CGFloat(self)
+    }
+}
+
+
+extension Double {
+    public var f: CGFloat {
+        return CGFloat(self)
+    }
+}
