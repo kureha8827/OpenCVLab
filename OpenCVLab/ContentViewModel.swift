@@ -23,8 +23,8 @@ class ContentViewModel: ObservableObject {
     @Published var imageToggle = true
     var detectedLandmarks: [VNFaceObservation] = []
     var leftEyeLandmarks: [CGPoint] = []
-    @Published var mapXPtr: UnsafeMutablePointer<Float>? = nil
-    @Published var mapYPtr: UnsafeMutablePointer<Float>? = nil
+    @Published var mapXBuffer: UnsafeMutableBufferPointer<Float>? = nil
+    @Published var mapYBuffer: UnsafeMutableBufferPointer<Float>? = nil
     
     // 以下, 一時描画用の変数
     @Published var tmp_p: CGFloat = 0
@@ -63,16 +63,20 @@ class ContentViewModel: ObservableObject {
         
 //             0からInt(roi.width*roi.height)までのfor文のようなもの
             if MapPointerHandler.eyeEnlarge.rawValue == 0 {
-                mapXPtr = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
-                mapYPtr = UnsafeMutablePointer<Float>.allocate(capacity: Int(roi.width*roi.height))
+                mapXBuffer = UnsafeMutableBufferPointer<Float>.allocate(capacity: Int(roi.width*roi.height))
+                mapYBuffer = UnsafeMutableBufferPointer<Float>.allocate(capacity: Int(roi.width*roi.height))
             }
             let dataX: Data
             let dataY: Data
-            guard let xPtr = mapXPtr else { return }
-            guard let yPtr = mapYPtr else { return }
-//            for n in 0..<Int(roi.width*roi.height) {
+            guard let xPtr = mapXBuffer else { return }
+            guard let yPtr = mapYBuffer else { return }
+            
             // このクロージャは暗黙的に＠Sendableとして扱われている
-            DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
+            // 下のコメントのコードに変更すると1.6倍ほど早くなるが下記の警告が出る
+            // 'UnsafeMutableBufferPointer<Float>' in a @Sendable closure;
+            // this is an error in the Swift 6 language mode
+//            DispatchQueue.concurrentPerform(iterations: Int(roi.width*roi.height)) { n in
+            for n in 0..<Int(roi.width*roi.height) {
                 let i = n / Int(roi.width)
                 let j = n % Int(roi.width)
                 let i_r = Float(i) - max_r
@@ -84,7 +88,6 @@ class ContentViewModel: ObservableObject {
                     // ?を外すとコンパイルエラー
                     xPtr[n] = max_r + i_r * Float(delta)
                     yPtr[n] = max_r + j_r * Float(delta)
-                    
                 } else {
                     xPtr[n] = Float(i)
                     yPtr[n] = Float(j)
@@ -92,8 +95,8 @@ class ContentViewModel: ObservableObject {
             }
             
 //            // 4はFloatのデータ長
-            dataX = Data(bytes: UnsafeRawPointer(xPtr), count: Int(roi.width*roi.height)*4)
-            dataY = Data(bytes: UnsafeRawPointer(yPtr), count: Int(roi.width*roi.height)*4)
+            dataX = Data(buffer: xPtr)
+            dataY = Data(buffer: yPtr)
             let mapX = Mat(rows: Int32(roi.height), cols: Int32(roi.width), type: CvType.CV_32FC1, data: dataX)
             let mapY = Mat(rows: Int32(roi.height), cols: Int32(roi.width), type: CvType.CV_32FC1, data: dataY)
             
