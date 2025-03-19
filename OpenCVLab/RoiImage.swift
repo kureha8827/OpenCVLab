@@ -5,4 +5,9 @@
 //  Created by kureha8827 on 2024/11/24.
 //
 
-import Foundation
+import SwiftUI
+
+struct RoiImage {
+    var image: UIImage
+    var size: CGRect
+}

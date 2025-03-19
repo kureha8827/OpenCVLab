@@ -16,12 +16,29 @@ struct ContentView: View {
         VStack(spacing: 20) {
             if model.imageToggle {
                 VStack {
-                    Image(uiImage: model.output)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 250)
+                    ZStack {
+                        Image(uiImage: model.uiImage.last!)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 250)
+                        Image(uiImage: model.roiImage.image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: model.roiImage.size.width * 250 / model.width)
+                            .position(
+                                x: (model.roiImage.size.width/2 + model.roiImage.size.minX) * 250 / model.width,
+                                y: (model.roiImage.size.height/2 + model.roiImage.size.minY) * 250 / model.width
+                            )
+//                            .position(
+//                                x: model.roiImage.size.minX * 250 / model.width,
+//                                y: model.roiImage.size.minY * 250 / model.width
+//                            )
+                    }
+                    .frame(width: 250, height: model.height * 250 / model.width)
+//                    .frame(width: 250)
                     Slider(value: $sliderValue, in: 0...100)
                         .frame(width: 300)
+                    
 //                    GeometryReader { _ in
 //                        Circle()
 //                            .foregroundStyle(.blue)
@@ -41,7 +58,6 @@ struct ContentView: View {
 //                        }
 //                    }
                 }
-                .frame(width: 250, height: model.height * 250 / model.width)
                 .onDisappear {
                     model.mapXBuffer?.deallocate()
                     model.mapYBuffer?.deallocate()
@@ -49,7 +65,7 @@ struct ContentView: View {
                 Text("Output")
                 
             } else {
-                Image(uiImage: model.input)
+                Image(uiImage: model.uiImage.last!)
                     .resizable()
                     .scaledToFit()
                     .frame(width: 250)
@@ -65,11 +81,20 @@ struct ContentView: View {
                     Text("toOutputImage")
                 }
             }
-            Button {
-                model.applyOpenCV()
-//                    print(model.detectedLandmarks)
-            } label: {
-                Text("applyOpenCV")
+            
+            Group {
+                Button {
+                    model.applyOpenCV()
+    //                    print(model.detectedLandmarks)
+                } label: {
+                    Text("applyOpenCV")
+                }
+                Button {
+                    model.temporarySave()
+    //                    print(model.detectedLandmarks)
+                } label: {
+                    Text("temporarySave")
+                }
             }
             .opacity(model.imageToggle ? 1 : 0)
         }

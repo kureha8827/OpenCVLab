@@ -16,11 +16,41 @@ extension Mat {
     }
 }
 
+
 extension UIImage {
+    // !!!: 仕様が怪しい
+    func mask(image: UIImage) -> UIImage {
+        guard let maskImage = image.cgImage,
+            let selfImage = self.cgImage,
+            let mask = maskImage.toGray(),
+            let maskedImage = selfImage.masking(mask)
+        else { return self }
+        
+        return UIImage(cgImage: maskedImage)
+    }
+    
+    
     func trimming(area: CGRect) -> UIImage {
         let imgRef = self.cgImage?.cropping(to: area)
         let trimImage = UIImage(cgImage: imgRef!, scale: self.scale, orientation: self.imageOrientation)
         return trimImage
+    }
+}
+
+extension CGImage {
+    func toGray() -> CGImage? {
+        let context = CGContext(
+            data: nil,
+            width: self.width,
+            height: self.height,
+            bitsPerComponent: self.bitsPerComponent,
+            bytesPerRow: self.bytesPerRow,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        )
+        context?.draw(self, in: CGRect(x: 0, y: 0, width: self.width, height: self.height))
+        guard let mask = context?.makeImage() else { return nil }
+        return mask
     }
 }
 

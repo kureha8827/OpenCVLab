@@ -15,10 +15,10 @@ internal typealias Rect = Rect2i
 @MainActor
 class ContentViewModel: ObservableObject {
     typealias cv2 = Imgproc
-    @Published var input = UIImage(named: "input.jpg")!
-    lazy var width = input.size.width
-    lazy var height = input.size.height
-    @Published var output = UIImage()
+    @Published var uiImage: [UIImage] = [UIImage(named: "input.jpg")!]
+    var roiImage = RoiImage(image: UIImage(), size: CGRect())
+    lazy var width = uiImage.last!.size.width
+    lazy var height = uiImage.last!.size.height
     @Published var landmarkPoints: [CGPoint] = []
     @Published var imageToggle = true
     var detectedLandmarks: [VNFaceObservation] = []
@@ -32,9 +32,11 @@ class ContentViewModel: ObservableObject {
     @Published var tmp_r: CGFloat = 0
     
     @Published var filterSize: Int = 0
+    private var didFilterSize: Int = 0
     
     init() {
         Task {
+             
             await self.fetchImageProperty()
             self.leftEyeLandmarks = self.landmarkPoints[17...22].map { $0 }
         }
@@ -42,8 +44,12 @@ class ContentViewModel: ObservableObject {
     
     func applyOpenCV() {
         Task {
-            // TODO: mapX, mapYをROIのみに適応する
-            eyeEnlarge(leftEyeLandmarks, filterSize)
+            /*
+             例えばスライダを70にしてから写真を保存して、
+             その後スライダを0に戻したときに元画像と同じ画像が出力されるようにしたい
+             */
+            let rate = filterSize - didFilterSize
+            eyeEnlarge(leftEyeLandmarks, rate)
         }
     }
     
@@ -54,12 +60,13 @@ class ContentViewModel: ObservableObject {
             let maxScale = 1.4
             let r = makeEllipseParameter(points)
             let (maxEllipse, max_p, max_q, max_r) = makeMaxareaEllipse(points, maxScale)
-            let roi = CGRect(x: (max_p-max_r).f, y: height-max_q.f-max_r.f, width: (max_r*2).f, height: (max_r*2).f)
-            let uiImage = input.trimming(area: roi)
-            let srcMat = Mat(uiImage: uiImage)
+            let roi = CGRect(x: (max_p-max_r).f, y: (height-max_q.f-max_r.f).f, width: (max_r*2).f, height: (max_r*2).f)
+            roiImage = RoiImage(image: uiImage.last!.trimming(area: roi), size: roi)
+//            print(roiImage)
+            
+            let srcMat = Mat(uiImage: roiImage.image)
             let dstMat = Mat()
             let start = Date()
-            print("eyeEnlarge-start")
         
 //             0からInt(roi.width*roi.height)までのfor文のようなもの
             if MapPointerHandler.eyeEnlarge.rawValue == 0 {
@@ -85,34 +92,53 @@ class ContentViewModel: ObservableObject {
                     // 画素に代入する値
                     let cur = self.currentPosition((CGFloat(i), CGFloat(j)), (CGFloat(max_r), CGFloat(max_r), r))
                     let delta = self.makeEnlargeDelta(cur, scale, maxScale)
-                    // ?を外すとコンパイルエラー
-                    xPtr[n] = max_r + i_r * Float(delta)
-                    yPtr[n] = max_r + j_r * Float(delta)
+                    xPtr[n] = max_r + j_r * Float(delta)
+                    yPtr[n] = max_r + i_r * Float(delta)
                 } else {
-                    xPtr[n] = Float(i)
-                    yPtr[n] = Float(j)
+                    xPtr[n] = Float(j)
+                    yPtr[n] = Float(i)
                 }
             }
             
-//            // 4はFloatのデータ長
             dataX = Data(buffer: xPtr)
             dataY = Data(buffer: yPtr)
             let mapX = Mat(rows: Int32(roi.height), cols: Int32(roi.width), type: CvType.CV_32FC1, data: dataX)
             let mapY = Mat(rows: Int32(roi.height), cols: Int32(roi.width), type: CvType.CV_32FC1, data: dataY)
             
-            print("eyeEnlarge-checkpoint1: ", String(format: "%.5f", -start.timeIntervalSinceNow))
-            cv2.remap(src: srcMat, dst: dstMat, map1: mapX, map2: mapY, interpolation: 2)   // 0.03
-            output = dstMat.toUIImage()
+            cv2.remap(src: srcMat, dst: dstMat, map1: mapX, map2: mapY, interpolation: 2)
+            roiImage.image = dstMat.toUIImage()
             let end = -start.timeIntervalSinceNow
             print("rate: \(rate)")
-            print("eyeEnlarge-end: ", String(format: "%.5f", end))
+            print("frameTime: ", String(format: "%.5f", end))
             print("-----------------------------------------------")
         }
     }
     
+    // 処理内容の反映
+    // luminousでは他の処理を選択したときに実行される
+    func temporarySave() {
+        // TODO: roiと元画像の合成
+        if roiImage.image == UIImage() || roiImage.size == CGRect() { return }
+        let maskedImage: UIImage = roiImage.image
+        let image: UIImage = UIGraphicsImageRenderer(
+            size: CGSize(width: width, height: height),
+            format: UIGraphicsImageRendererFormat(
+                for: UITraitCollection(displayScale: 1)
+            )
+        ).image { context in
+            uiImage.last!.draw(in: CGRect(x: 0, y: 0, width: width, height: height))
+            maskedImage.draw(in: roiImage.size, blendMode: .copy, alpha: 1)
+        }
+        
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+        
+        uiImage.append(image)
+        didFilterSize = filterSize
+    }
+        
     // ランドマーク座標の生成
     func fetchImageProperty() async {
-        async let _ = detectLandmarks(input)
+        async let _ = detectLandmarks(uiImage.last!)
         for (c, v) in landmarkPoints.enumerated() {
             landmarkPoints[c].y = height - v.y
         }
@@ -145,57 +171,57 @@ class ContentViewModel: ObservableObject {
     private func fetchAllLandmarkPoints(from landmarks: VNFaceLandmarks2D) {
 
         // 顔の輪郭 0-16
-        if let faceContour = landmarks.faceContour?.pointsInImage(imageSize: input.size) {
+        if let faceContour = landmarks.faceContour?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: faceContour)
         }
         
         // 左目 17-22
-        if let leftEye = landmarks.leftEye?.pointsInImage(imageSize: input.size) {
+        if let leftEye = landmarks.leftEye?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: leftEye)
         }
         
         // 右目 23-28
-        if let rightEye = landmarks.rightEye?.pointsInImage(imageSize: input.size) {
+        if let rightEye = landmarks.rightEye?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: rightEye)
         }
         
         // 左眉 29-34
-        if let leftEyebrow = landmarks.leftEyebrow?.pointsInImage(imageSize: input.size) {
+        if let leftEyebrow = landmarks.leftEyebrow?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: leftEyebrow)
         }
         
         // 右眉 35-40
-        if let rightEyebrow = landmarks.rightEyebrow?.pointsInImage(imageSize: input.size) {
+        if let rightEyebrow = landmarks.rightEyebrow?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: rightEyebrow)
         }
         
         // 外側の唇 41-54
-        if let outerLips = landmarks.outerLips?.pointsInImage(imageSize: input.size) {
+        if let outerLips = landmarks.outerLips?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: outerLips)
         }
         
         // 内側の唇 55-60
-        if let innerLips = landmarks.innerLips?.pointsInImage(imageSize: input.size) {
+        if let innerLips = landmarks.innerLips?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: innerLips)
         }
         
         // 左瞼 61
-        if let leftPupil = landmarks.leftPupil?.pointsInImage(imageSize: input.size) {
+        if let leftPupil = landmarks.leftPupil?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: leftPupil)
         }
         
         // 右瞼 62
-        if let rightPupil = landmarks.rightPupil?.pointsInImage(imageSize: input.size) {
+        if let rightPupil = landmarks.rightPupil?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: rightPupil)
         }
         
         // 鼻 63-70
-        if let nose = landmarks.nose?.pointsInImage(imageSize: input.size) {
+        if let nose = landmarks.nose?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: nose)
         }
         
         // 鼻の中央（ブリッジ部分）71-76
-        if let noseCrest = landmarks.noseCrest?.pointsInImage(imageSize: input.size) {
+        if let noseCrest = landmarks.noseCrest?.pointsInImage(imageSize: uiImage.last!.size) {
             landmarkPoints.append(contentsOf: noseCrest)
         }
     }
